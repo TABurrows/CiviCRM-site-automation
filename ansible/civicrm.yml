@@ -1,0 +1,167 @@
+- name: Deploy CiviCRM
+  hosts: CiviCRM-Vagrant-host
+  gather_facts: False
+  sudo: True
+  vars_files:
+    - ./vars/settings.yml
+  handlers:
+    - name: restart nginx
+      service: name=nginx state=restarted
+
+    - name: restart php-fpm
+      service: name=php-fpm state=restarted
+
+    - name: restart mysqld
+      service: name=mysqld state=restarted
+  tasks:
+
+    - name: update server packages
+      yum: name=*
+
+    - name: install webtatic repo
+      yum:
+        name: "{{ webtatic_repo_url }}"
+        state: present
+
+    - name: import Webtatic GPG key
+      rpm_key:
+        key: "{{ webtatic_repo_key_url }}"
+        state: present
+
+    - name: install server packages
+      yum: pkg={{ item }}
+      with_items:
+        - epel-release
+        - nginx
+        - mariadb-server
+        - php56w-cli
+        - php56w-mysql
+        - php56w-fpm
+        - php56w-gd
+        - php56w-xml
+        - php56w-openssl
+        - php56w-mbstring
+        - php56w-curl
+        - php56w-pdo
+        - wget
+        - unzip
+        - git
+        - certbot
+        - policycoreutils-python
+
+    - name: enable services
+      command: "{{ item }}"
+      with_items:
+        - systemctl enable nginx
+        - systemctl enable php-fpm
+        - systemctl enable mariadb
+        - systemctl enable firewalld
+
+    - name: stop running services
+      command: "{{ item }}"
+      with_items:
+        - systemctl stop php-fpm
+        - systemctl stop nginx
+    
+    - name: start mysql service
+      command: systemctl start mariadb.service
+
+    - name: create install log
+      command: "touch /tmp/install.log"
+
+
+    - name: get composer
+      get_url:
+          url: https://getcomposer.org/installer
+          dest: /tmp/composer
+
+    - name: install composer
+      command: "{{ item }}"
+      with_items:
+        - php /tmp/composer --install-dir=/usr/local/bin
+        - mv /usr/local/bin/composer.phar /usr/local/bin/composer
+
+
+    - name: rename original nginx nginx.conf
+      copy: remote_src=True src=/etc/nginx/nginx.conf dest=/etc/nginx/nginx.conf.ORIG
+
+    - name: rename original fastcgi_params
+      copy: remote_src=True src=/etc/nginx/fastcgi_params dest=/etc/nginx/fastcgi_params.ORIG
+
+    - name: rename original php-fpm wwww.conf
+      command: mv /etc/php-fpm.d/www.conf /etc/php-fpm.d/www.conf.ORIG
+
+
+    - name: copy down nginx config
+      copy: src=./files/nginx.conf dest=/etc/nginx/nginx.conf
+
+    - name: copy down fastcgi_params
+      copy: src=./files/fastcgi_params dest=/etc/nginx/fastcgi_params
+
+    - name: copy down drupal config
+      template:
+        src: ./templates/drupal.conf
+        dest: /etc/nginx/conf.d/drupal.conf
+        owner: root
+        group: root
+        mode: 0644
+        #copy: src=./templates/drupal.conf dest=/etc/nginx/conf.d/drupal.conf
+
+    - name: copy down php-fpm www.conf
+      copy: src=./files/www.conf dest=/etc/php-fpm.d/www.conf
+
+
+    - name: create drupal db
+      command: "{{ item }}"
+      with_items:
+        - sudo mysql -u root -e "CREATE DATABASE "{{ drupal_db }}" CHARACTER SET utf8 COLLATE utf8_general_ci;"
+        - sudo mysql -u root {{ drupal_db }} -e "GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, INDEX, ALTER, CREATE TEMPORARY TABLES, LOCK TABLES ON `{{ drupal_db }}`.* to `{{ drupal_db_user }}`@'localhost' identified by '{{ drupal_db_pass }}';"
+        - sudo mysql -u root {{ drupal_db }} -e "FLUSH PRIVILEGES;"
+
+
+    - name: create civicrm db
+      command: "{{ item }}"
+      with_items:
+        - sudo mysql -u root -e "CREATE DATABASE {{ civicrm_db }} CHARACTER SET utf8 COLLATE utf8_general_ci;"
+        - sudo mysql -u root {{ civicrm_db }} -e "GRANT ALL PRIVILEGES ON `{{ civicrm_db }}`.* to `{{ civicrm_db_user }}`@'localhost' identified by '{{ civicrm_db_pass }}';"
+        - sudo mysql -u root {{ civicrm_db }} -e "FLUSH PRIVILEGES;"
+
+    - name: create drupal web app directory
+      file: path={{ drupal_app_root }} state=directory
+
+    - name: create drupal web app
+      command: "{{ item }}"
+      with_items:
+        - git clone --branch 7.x https://git.drupal.org/project/drupal.git {{ drupal_app_root }}
+
+    - name: run composer against drupal web app
+      shell: "cd {{ drupal_app_root }} && /usr/local/bin/composer create-project drupal-composer/drupal-project:~7.0 drupal --stability dev --no-interaction"
+
+    - name: run drush against drupal web app
+      shell: "cd {{ drupal_web_root }} && ../vendor/bin/drush site-install --site-name=CiviCRM --account-name={{ drupal_site_user }} --account-pass={{ drupal_site_user_pass }} --db-url=mysql://{{ drupal_db_user }}:{{ drupal_db_pass }}@localhost/{{ drupal_db }} -y"
+
+    - name: fetch civicrm tarball
+      shell: "cd /tmp && wget {{ civicrm_src_url }}{{ civicrm_src_file }}"
+
+    - name: fetch civicrm drush includes file
+      shell: "cd {{ civicrm_drush_root }} && wget {{ civicrm_drush_file }}"
+      
+    - name: clear drush command cache
+      shell: "cd {{ drupal_web_root }} && ../vendor/bin/drush cc drush"
+
+    - name: install civicrm with drush
+      shell: "cd {{ drupal_web_root }} && ../vendor/bin/drush civicrm-install --dbuser={{ civicrm_db_user }} --dbpass={{ civicrm_db_pass }} --dbhost='localhost' --dbname={{ civicrm_db }} --tarfile='/tmp/{{ civicrm_src_file }}' --destination='sites/all/modules' -y"
+
+    - name: set selinux context
+      command: "{{ item }}"
+      with_items:
+        - chown -R nginx:nginx /usr/share/nginx/drupal
+        - chmod -R 2755 /usr/share/nginx/drupal/drupal/web/sites/default/files/
+        - chcon -R -t httpd_sys_rw_content_t /usr/share/nginx/drupal/drupal/web/sites/default/files
+        - semanage fcontext -a -t httpd_sys_rw_content_t "/usr/share/nginx/drupal/drupal/web/sites/default/files(/.*)?"
+
+
+
+    #- name: create TLS certificates
+    #  command: certbot certonly -a webroot --webroot-path={{ drupal_web_root }} -m {{ cert_email }} --agree-tos -n --domains={{ cert_domain }}
+

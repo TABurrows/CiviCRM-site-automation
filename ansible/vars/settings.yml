@@ -1,0 +1,51 @@
+# Drupal paths
+drupal_app_root: /usr/share/nginx/drupal
+drupal_web_root: /usr/share/nginx/drupal/drupal/web
+
+# Local paths
+usr_local_bin: /usr/local/bin
+usr_share_nginx: /usr/share/nginx
+usr_local_src: /usr/local/src
+
+
+# Drush variables
+drush_opt: /opt/drush"
+
+
+# Drupal variables
+drupal_site_user: "admin"
+# TODO: define a password
+# openssl ran 8 -hex
+drupal_site_user_pass: 
+drupal_db:  "drupal_db"
+drupal_db_user: "drupal_db_user"
+# TODO: define a password
+# openssl rand 16 -hex
+drupal_db_pass: 
+
+
+# CiviCRM variables
+civicrm_db: "civicrm_db"
+civicrm_db_user: "civicrm_db_user"
+# TODO: define a password
+# openssl rand 16 -hex
+civicrm_db_pass: 
+
+# CiviCRM Sources
+civicrm_src_url: https://download.civicrm.org/
+# LTS at 30 May 17
+#civicrm_src_file: civicrm-4.6.28-drupal.tar.gz
+# Latest version 30 May 17
+civicrm_src_file:  civicrm-4.7.19-drupal.tar.gz
+civicrm_drush_file: https://raw.githubusercontent.com/civicrm/civicrm-drupal/7.x-master/drush/civicrm.drush.inc
+civicrm_drush_root: /usr/share/nginx/drupal/drupal/vendor/drush/drush/commands
+
+
+# Certificate details
+cert_email:      hello@78-o.com
+cert_domain:     civicrm.78-o.com
+
+
+# Webtatic settings
+webtatic_repo_url: "https://mirror.webtatic.com/yum/el7/webtatic-release.rpm"
+webtatic_repo_key_url: "https://mirror.webtatic.com/yum/RPM-GPG-KEY-webtatic-el7"

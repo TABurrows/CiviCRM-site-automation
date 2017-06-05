@@ -1,0 +1,2 @@
+CiviCRM-Vagrant-host    ansible_ssh_host=127.0.0.1               ansible_ssh_port=2222
+CiviCRM-AWS-host        ansible_ssh_host=AWS_PUBLIC_IP           ansible_ssh_port=22
