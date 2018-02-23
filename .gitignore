@@ -1,0 +1,4 @@
+.vagrant
+KEYS
+terraform.tfstate
+terraform.tfstate.backup
